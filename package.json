@@ -3,7 +3,7 @@
   "displayName": "HTML Porter",
   "description": "port your HTML anywhere in your HTML-Project",
   "publisher": "Fokklz",
-  "version": "0.0.2",
+  "version": "0.0.3",
   "pricing": "Free",
   "engines": {
     "vscode": "^1.81.0"
