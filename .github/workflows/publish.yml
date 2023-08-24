@@ -1,0 +1,92 @@
+name: Publish VSCode Extension
+
+on:
+  push:
+    branches:
+      - main
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v3
+        with:
+          token: ${{ secrets.G_PAT }}
+
+      - name: Setup Node.js environment
+        uses: actions/setup-node@v3
+        with:
+          node-version: "16.x"
+
+      - name: Install dependencies
+        run: npm install
+
+      - name: Install VSCE
+        run: npm install -g vsce
+
+      - name: Setup Xvfb
+        run: |
+          sudo apt-get install -y xvfb
+          Xvfb :99 -screen 0 1024x768x24 > /dev/null 2>&1 & 
+          echo "DISPLAY=:99.0" >> $GITHUB_ENV
+
+      - name: Run tests
+        run: npm test
+
+      - name: Package extension
+        id: package
+        env:
+          PACKAGE_NAME: html-porter.vsix
+        run: |
+          vsce package
+          VSIX_FILE=$(ls *.vsix)
+          echo "::set-output name=vsix::${VSIX_FILE}"
+          VERSION=$(echo $VSIX_FILE | grep -oP '(?<=html-porter-)\d+\.\d+\.\d+(?=.vsix)')
+          echo "::set-output name=version::${VERSION}"
+
+      - name: Publish to VSCode Marketplace
+        run: vsce publish -p ${{ secrets.VSCE_PAT }}
+        continue-on-error: true
+
+      - name: Create a new tag
+        run: |
+          git config --global user.email "fokklzofficial@gmail.com"
+          git config --global user.name "Fokklz"
+          git checkout -b release-v${{ steps.package.outputs.version }}
+          git tag v${{ steps.package.outputs.version }}
+          git push origin v${{ steps.package.outputs.version }}
+
+      - name: Delete the temporary branch
+        run: |
+          git checkout main
+          git branch -D release-v${{ steps.package.outputs.version }}
+
+      - name: Generate Changelog
+        id: changelog
+        run: |
+          echo "::set-output name=changelog::$(git log --merges --pretty=format:'%b' v${{ steps.package.outputs.version }}..HEAD | sed '1d')"
+
+      - name: Create Release
+        id: create_release
+        uses: actions/create-release@v1
+        env:
+          GITHUB_TOKEN: ${{ secrets.G_PAT }}
+        with:
+          tag_name: v${{ steps.package.outputs.version }}
+          release_name: Release v${{ steps.package.outputs.version }}
+          body: ${{ steps.changelog.outputs.changelog }}
+          draft: false
+          prerelease: false
+
+      - name: Upload Release Asset
+        id: upload-release-asset
+        uses: actions/upload-release-asset@v1
+        env:
+          GITHUB_TOKEN: ${{ secrets.G_PAT }}
+        with:
+          upload_url: ${{ steps.create_release.outputs.upload_url }}
+          asset_path: ./${{ steps.package.outputs.vsix }}
+          asset_name: ${{ steps.package.outputs.vsix }}
+          asset_content_type: application/octet-stream
